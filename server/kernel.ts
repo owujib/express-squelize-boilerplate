@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import 'dotenv/config';
 import path from 'path';
 import fs from 'fs';
+import favicon from 'serve-favicon';
 
 import ApiError from './utils/ApiError';
 import HttpStatusCode from './helpers/HttpsResponse';
@@ -48,6 +49,9 @@ class Kernel {
     this.app.set('PORT', process.env.PORT || 5500);
     this.app.set('NODE_ENV', process.env.NODE_ENV);
 
+    this.app.use(
+      favicon(path.join(__dirname, '../public/icon', 'favicon.ico')),
+    );
     this.app.use(express.static(path.join(__dirname, '../public')));
   }
 
@@ -104,35 +108,125 @@ class Kernel {
     })();
   }
 
+  // mapControllersToRoutes(controllers: any[]) {
+  //   return controllers.map((controller) => {
+  //     const basePath = Reflect.getMetadata('basePath', controller);
+  //     const routes = Reflect.getMetadata('routes', controller.prototype) || [];
+
+  //     return routes.map(
+  //       ({
+  //         path,
+  //         method,
+  //         key,
+  //       }: {
+  //         path: string;
+  //         method: string;
+  //         key: string;
+  //       }) => {
+  //         logger.info(
+  //           `[${method.toUpperCase()}] ${basePath}${path} to ${key} on ${
+  //             controller.name
+  //           }`,
+  //         );
+
+  //         return (this.app as any)[method](
+  //           `${basePath}${path}`,
+  //           controller.prototype[key],
+  //         );
+  //       },
+  //     );
+  //   });
+  // }
+
   mapControllersToRoutes(controllers: any[]) {
-    return controllers.map((controller) => {
-      const basePath = Reflect.getMetadata('basePath', controller);
-      const routes = Reflect.getMetadata('routes', controller.prototype) || [];
+    controllers.forEach((controller) => {
+      const basePath = controller.prototype.basePath || '';
+      const routes = controller.prototype.routes || [];
 
-      return routes.map(
-        ({
-          path,
-          method,
-          key,
-        }: {
-          path: string;
-          method: string;
-          key: string;
-        }) => {
-          logger.info(
-            `[${method.toUpperCase()}] ${basePath}${path} to ${key} on ${
-              controller.name
-            }`,
-          );
+      routes.forEach((route: { path: string; method: string; key: any }) => {
+        logger.info(
+          `[${route.method}] ${basePath}${route.path} to ${route.key} on ${controller.name}`,
+        );
 
-          return (this.app as any)[method](
-            `${basePath}${path}`,
-            controller.prototype[key],
+        const middleware =
+          controller.prototype.middleware?.[route.key] ||
+          controller.prototype.middleware;
+
+        const guards = controller.guards?.[route.key] || controller.guards;
+        const handlers = [];
+
+        if (guards) {
+          const guardArray = Array.isArray(guards) ? guards : [guards];
+          guardArray.forEach((guard: any) => {
+            // Check if it's a static method (class constructor)
+            if (typeof guard.authenticate === 'function') {
+              console.log('111');
+              handlers.push(guard.authenticate);
+            }
+            //  else if (typeof guard === 'function') {
+            //   console.log(guard);
+            //   console.log('1122');
+            //   handlers.push(guard); // Handle static method directly
+            // }
+            else {
+              throw new Error(
+                `Invalid guard in ${controller.name}.${route.key}. The guard must have an 'authenticate' function.`,
+              );
+            }
+          });
+          // handlers.push(
+          //   ...(Array.isArray(guards.authenticate)
+          //     ? guards
+          //     : guards !== undefined
+          //     ? []
+          //     : [guards.authenticate]),
+          // );
+        }
+
+        if (middleware) {
+          handlers.push(
+            ...(Array.isArray(middleware)
+              ? middleware
+              : middleware !== undefined
+              ? []
+              : [middleware]),
           );
-        },
-      );
+        }
+
+        if (controller.prototype.hasOwnProperty(route.key)) {
+          handlers.push(
+            controller.prototype[route.key].bind(controller.prototype),
+          );
+        } else {
+          logger.warn(
+            `Method ${route.key} not found on ${controller.name}, skipping.`,
+          );
+        }
+
+        // Check if there are any handlers before registering the route
+        if (handlers.length > 0) {
+          (this.app as any)[route.method.toLowerCase()](
+            `${basePath}${route.path}`,
+            ...handlers.map(
+              (handler) =>
+                (req: Request, res: Response, next: NextFunction) => {
+                  return handler(req, res, next);
+                },
+            ),
+          );
+        } else {
+          logger.warn(
+            `No middleware or handler found for ${route.method} ${basePath}${route.path} on ${controller.name}. Skipping.`,
+          );
+        }
+      });
     });
   }
 }
+
+process.on('uncaughtException', (err) => {
+  logger.error(JSON.stringify(`${err.name}: ${err.message}`));
+  process.exit(1);
+});
 
 export default new Kernel().app;

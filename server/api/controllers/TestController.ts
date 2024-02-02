@@ -3,7 +3,7 @@ import BaseController from '.';
 
 import Helper from '../../helpers';
 import { uploadFileHandler } from '../../decorators/FileHandler';
-import { Controller, GET, POST } from '../../decorators';
+import { Controller, Get, Post } from '../../decorators';
 import logger from '../../utils/logger';
 import FileUploadService from '../../services/FileUploadService';
 import AWSStorageProvider from '../../services/FileUploadService/AwsStorageProvider';
@@ -14,12 +14,12 @@ class TestController extends BaseController {
     super();
   }
 
-  @GET('/')
+  @Get('/')
   async getIndex(req: any, res: any) {
     res.send('Hello, Express with Decorators! kknd');
   }
 
-  @POST('/file')
+  @Post('/file')
   @uploadFileHandler({
     validationFunction: Helper.requestFileValidation([
       'image/jpeg',

@@ -1,7 +1,6 @@
 import { Response, Request, NextFunction } from 'express';
 import RouteController from '..';
 
-import Helper from '../../../helpers';
 import HttpStatusCode from '../../../helpers/HttpsResponse';
 import Validator from '../../../helpers/Validator';
 import Joi from 'joi';
@@ -10,16 +9,26 @@ import db from '../../../models';
 import ApiError from '../../../utils/ApiError';
 import AuthMail from '../../../mail/Authmail';
 
-import { Controller, POST } from '../../../decorators';
+import {
+  Controller,
+  Post,
+  Get,
+  UseMiddleware,
+  UseGuard,
+} from '../../../decorators';
 import { signUpDto } from './dto';
+import TestMiddleware from '../../middlewares/TestMiddleware';
+import { TestGuard } from '../../guards/test-guard';
 
 @Controller('/api/auth')
+@UseMiddleware(TestMiddleware.test)
+@UseGuard(TestGuard)
 class AuthController extends RouteController {
   constructor() {
     super();
   }
 
-  @POST('/register')
+  @Post('/register')
   public async register(req: Request, res: Response, next: NextFunction) {
     try {
       const { error } = signUpDto.validate(req.body);
@@ -58,7 +67,7 @@ class AuthController extends RouteController {
     }
   }
 
-  @POST('/login')
+  @Post('/login')
   public async login(req: Request, res: Response, next: NextFunction) {
     try {
       return super.sendSuccessResponse(
@@ -69,6 +78,18 @@ class AuthController extends RouteController {
       );
     } catch (error) {
       return next(error);
+    }
+  }
+
+  @Get('/google')
+  @UseMiddleware([TestMiddleware.test])
+  async googleAuth(req: Request, res: Response, next: NextFunction) {
+    try {
+      return res.status(200).json({
+        message: 'google route is working',
+      });
+    } catch (error) {
+      throw error;
     }
   }
 }
